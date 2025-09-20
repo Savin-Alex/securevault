@@ -35,18 +35,20 @@ pub fn wrap_key_aes_gcm(kek: &[u8; 32], dek: &[u8; 32], nonce12: &[u8; 12]) -> V
     out
 }
 
-pub fn unwrap_key_aes_gcm(kek: &[u8; 32], ct_with_nonce: &[u8]) -> [u8; 32] {
-    assert!(ct_with_nonce.len() >= 12 + 16, "ciphertext too short");
+pub fn unwrap_key_aes_gcm(kek: &[u8; 32], ct_with_nonce: &[u8]) -> Result<[u8; 32], String> {
+    if ct_with_nonce.len() < 12 + 16 {
+        return Err("ciphertext too short".to_string());
+    }
     let (nonce_bytes, ct) = ct_with_nonce.split_at(12);
     let cipher = Aes256Gcm::new(kek.into());
     let nonce = Nonce::from_slice(nonce_bytes);
     let mut dek = cipher
         .decrypt(nonce, ct)
-        .expect("decryption failure");
+        .map_err(|_| "decryption failure - wrong password or corrupted data".to_string())?;
     let mut out = [0u8; 32];
     out.copy_from_slice(&dek[..32]);
     dek.zeroize();
-    out
+    Ok(out)
 }
 
 // Generic AES-GCM helpers for arbitrary plaintext

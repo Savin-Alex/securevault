@@ -19,6 +19,9 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["dmg", "msi"]
+    "targets": ["dmg", "msi"],
+    "icon": [
+      "icons/icon.png"
+    ]
   }
 }

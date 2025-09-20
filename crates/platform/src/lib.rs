@@ -2,7 +2,7 @@ use std::time::Duration;
 use tokio::time::sleep;
 
 pub struct ClipboardManager {
-    clear_timeout: Duration,
+    pub clear_timeout: Duration,
 }
 
 impl ClipboardManager {
@@ -57,7 +57,7 @@ impl ClipboardManager {
         Ok(())
     }
 
-    fn clear_clipboard() -> anyhow::Result<()> {
+    pub fn clear_clipboard() -> anyhow::Result<()> {
         #[cfg(target_os = "macos")]
         {
             use std::process::Command;
@@ -82,7 +82,7 @@ impl ClipboardManager {
 #[derive(Clone)]
 pub struct IdleDetector {
     timeout: Duration,
-    last_activity: std::sync::Arc<std::sync::atomic::AtomicU64>,
+    pub last_activity: std::sync::Arc<std::sync::atomic::AtomicU64>,
 }
 
 impl IdleDetector {

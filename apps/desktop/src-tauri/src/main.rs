@@ -46,7 +46,7 @@ fn unlock_vault(
     let vs = VaultStore::open(path).map_err(|e| e.to_string())?;
     let params = ArgonParams::from(vs.header.kdf_params.clone());
     let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-    let _dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+    let _dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e)?;
     
     // Set up auto-lock and clipboard management
     let idle_detector = IdleDetector::new(300); // 5 minutes
@@ -60,27 +60,8 @@ fn unlock_vault(
         *manager = Some(clipboard_manager);
     }
     
-    // Start auto-lock monitoring
-    let idle_detector_clone = state.idle_detector.clone();
-    let is_locked_clone = state.is_locked.clone();
-    
-    tokio::spawn(async move {
-        let idle_detector_option = {
-            let detector_guard = idle_detector_clone.lock().ok();
-            detector_guard.and_then(|detector| detector.clone())
-        };
-        
-        if let Some(idle) = idle_detector_option {
-            let is_locked_clone = is_locked_clone.clone();
-            idle.wait_for_idle(move || {
-                // Auto-lock callback
-                if let Ok(mut locked) = is_locked_clone.lock() {
-                    *locked = true;
-                }
-                println!("Vault auto-locked due to inactivity");
-            }).await.ok();
-        }
-    });
+    // Auto-lock monitoring will be handled by the frontend
+    // The idle detector is set up and ready to be used
     
     if let Ok(mut locked) = state.is_locked.lock() {
         *locked = false;
@@ -94,7 +75,7 @@ fn create_entry(path: String, master_password: String, title: String, username: 
 	let vs = VaultStore::open(&path).map_err(|e| e.to_string())?;
 	let params = ArgonParams::from(vs.header.kdf_params.clone());
 	let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e.to_string())?;
 	
 	let entry = VaultEntry {
 		id: Uuid::new_v4(),
@@ -111,7 +92,7 @@ fn list_entries(path: String, master_password: String) -> Result<Vec<(String, St
 	let vs = VaultStore::open(&path).map_err(|e| e.to_string())?;
 	let params = ArgonParams::from(vs.header.kdf_params.clone());
 	let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e.to_string())?;
 	
 	let entries = vs.list_entries(&dek).map_err(|e| e.to_string())?;
 	Ok(entries.into_iter().map(|(id, title)| (id.to_string(), title)).collect())
@@ -122,7 +103,7 @@ fn read_entry(path: String, master_password: String, entry_id: String) -> Result
 	let vs = VaultStore::open(&path).map_err(|e| e.to_string())?;
 	let params = ArgonParams::from(vs.header.kdf_params.clone());
 	let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e.to_string())?;
 	
 	let id = Uuid::parse_str(&entry_id).map_err(|e| e.to_string())?;
 	vs.get_entry(&dek, id).map_err(|e| e.to_string())?.ok_or_else(|| "Entry not found".to_string())
@@ -140,7 +121,7 @@ fn update_entry(
 	let vs = VaultStore::open(&path).map_err(|e| e.to_string())?;
 	let params = ArgonParams::from(vs.header.kdf_params.clone());
 	let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e.to_string())?;
 	let id_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
 	
 	let entry = VaultEntry {
@@ -159,7 +140,7 @@ fn delete_entry(path: String, master_password: String, id: String) -> Result<boo
 	let vs = VaultStore::open(&path).map_err(|e| e.to_string())?;
 	let params = ArgonParams::from(vs.header.kdf_params.clone());
 	let kek = derive_kek(master_password.as_bytes(), &params, &vs.header.salt_kek);
-	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek);
+	let dek = unwrap_key_aes_gcm(&kek, &vs.header.wrapped_dek).map_err(|e| e.to_string())?;
 	let id_uuid = Uuid::parse_str(&id).map_err(|e| e.to_string())?;
 	
 	vs.delete_entry(&dek, id_uuid).map_err(|e| e.to_string())?;
@@ -172,6 +153,13 @@ fn copy_to_clipboard(text: String, state: State<'_, AppState>) -> Result<(), Str
         if let Some(clipboard) = manager.as_ref() {
             // Use the sync version for now
             clipboard.copy_to_clipboard(&text).map_err(|e| e.to_string())?;
+            
+            // Start auto-clear timer
+            let clear_timeout = clipboard.clear_timeout;
+            std::thread::spawn(move || {
+                std::thread::sleep(clear_timeout);
+                let _ = ClipboardManager::clear_clipboard();
+            });
         }
     }
     Ok(())
@@ -194,6 +182,28 @@ fn is_vault_locked(state: State<AppState>) -> Result<bool, String> {
     } else {
         Ok(true)
     }
+}
+
+#[tauri::command]
+fn check_auto_lock(state: State<AppState>) -> Result<bool, String> {
+    if let Ok(detector) = state.idle_detector.lock() {
+        if let Some(idle) = detector.as_ref() {
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs();
+            let last = idle.last_activity.load(std::sync::atomic::Ordering::Relaxed);
+            
+            // Check if 5 minutes (300 seconds) have passed
+            if now - last >= 300 {
+                if let Ok(mut locked) = state.is_locked.lock() {
+                    *locked = true;
+                }
+                return Ok(true);
+            }
+        }
+    }
+    Ok(false)
 }
 
 #[tauri::command]
@@ -255,6 +265,7 @@ fn main() {
             copy_to_clipboard,
             record_activity,
             is_vault_locked,
+            check_auto_lock,
             generate_password_custom,
             generate_password_preset,
             generate_pronounceable
