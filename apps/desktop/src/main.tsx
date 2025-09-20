@@ -4,8 +4,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { toast } from "@/components/ui/use-toast";
-import { Lock, Unlock, Copy, Pencil, Trash2, Plus, Search } from "lucide-react";
+import { useToast, ToastProvider } from "@/components/ui/use-toast";
+import { useDarkMode } from "@/components/ui/use-dark-mode";
+import { Lock, Unlock, Copy, Pencil, Trash2, Plus, Search, Eye, EyeOff, Sun, Moon } from "lucide-react";
 import "./index.css";
 
 async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -22,6 +23,8 @@ interface Entry {
 }
 
 function App() {
+  const toast = useToast();
+  const { enabled: darkMode, toggle } = useDarkMode();
   const [path, setPath] = useState<string>(
     `${navigator.platform.includes("Mac") ? "/Users/alexander" : "C:"}/securevault/test.svlt`
   );
@@ -29,9 +32,10 @@ function App() {
   const [unlocked, setUnlocked] = useState(false);
   const [entries, setEntries] = useState<Array<[string, string]>>([]);
   const [newEntry, setNewEntry] = useState({ title: "", username: "", password: "" });
+  const [showPassword, setShowPassword] = useState(false);
   const [editingEntry, setEditingEntry] = useState<Entry | null>(null);
-  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
-  const [searchTerm, setSearchTerm] = useState(""); // 🔍 NEW
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<{ id: string; title: string } | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
 
   // --- Vault auto-lock check ---
   useEffect(() => {
@@ -188,7 +192,12 @@ function App() {
         <h1 className="text-2xl font-bold flex items-center gap-2">
           <Unlock className="w-6 h-6 text-green-600" /> SecureVault
         </h1>
-        <p className="text-gray-500 text-sm">Auto-lock: 5m • Clipboard: 30s</p>
+        <div className="flex items-center gap-4">
+          <p className="text-muted-foreground text-sm">Auto-lock: 5m • Clipboard: 30s</p>
+          <Button size="icon" variant="ghost" onClick={toggle}>
+            {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </Button>
+        </div>
       </header>
 
       {/* New entry */}
@@ -201,7 +210,23 @@ function App() {
         <CardContent className="grid gap-4">
           <Input placeholder="Title" value={newEntry.title} onChange={(e) => setNewEntry({ ...newEntry, title: e.target.value })} />
           <Input placeholder="Username" value={newEntry.username} onChange={(e) => setNewEntry({ ...newEntry, username: e.target.value })} />
-          <Input placeholder="Password" value={newEntry.password} onChange={(e) => setNewEntry({ ...newEntry, password: e.target.value })} />
+          <div className="relative">
+            <Input
+              type={showPassword ? "text" : "password"}
+              placeholder="Password"
+              value={newEntry.password}
+              onChange={(e) => setNewEntry({ ...newEntry, password: e.target.value })}
+              className="pr-10"
+            />
+            <Button 
+              size="icon" 
+              variant="ghost" 
+              className="absolute right-0 top-0 h-full px-3 hover:bg-transparent"
+              onClick={() => setShowPassword((s) => !s)}
+            >
+              {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+            </Button>
+          </div>
           <Button onClick={onCreateEntry}>Save Entry</Button>
         </CardContent>
       </Card>
@@ -212,7 +237,7 @@ function App() {
           <CardTitle>Entries ({filteredEntries.length})</CardTitle>
           {/* 🔍 Search Bar */}
           <div className="flex items-center gap-2">
-            <Search className="w-4 h-4 text-gray-500" />
+            <Search className="w-4 h-4 text-muted-foreground" />
             <Input
               placeholder="Search entries..."
               value={searchTerm}
@@ -223,22 +248,22 @@ function App() {
         </CardHeader>
         <CardContent className="space-y-3">
           {filteredEntries.length === 0 ? (
-            <p className="text-gray-500">No entries match your search.</p>
+            <p className="text-muted-foreground">No entries match your search.</p>
           ) : (
             filteredEntries.map(([id, title]) => (
-              <div key={id} className="flex items-center justify-between border rounded-md px-3 py-2">
+              <div key={id} className="flex items-center justify-between border rounded-md px-3 py-3">
                 <div>
                   <strong>{title}</strong>
-                  <span className="text-gray-500 text-xs ml-2">{id.slice(0, 6)}…</span>
+                  <span className="text-muted-foreground text-xs ml-2">{id.slice(0, 6)}…</span>
                 </div>
-                <div className="flex gap-2">
-                  <Button size="sm" variant="outline" onClick={() => copyPassword(id)}>
+                <div className="flex gap-1">
+                  <Button size="icon" variant="outline" onClick={() => copyPassword(id)}>
                     <Copy className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" onClick={() => startEdit(id)}>
+                  <Button size="icon" onClick={() => startEdit(id)}>
                     <Pencil className="w-4 h-4" />
                   </Button>
-                  <Button size="sm" variant="destructive" onClick={() => setShowDeleteConfirm(id)}>
+                  <Button size="icon" variant="destructive" onClick={() => setShowDeleteConfirm({ id, title })}>
                     <Trash2 className="w-4 h-4" />
                   </Button>
                 </div>
@@ -252,12 +277,12 @@ function App() {
       <Dialog open={!!showDeleteConfirm} onOpenChange={() => setShowDeleteConfirm(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Delete Entry</DialogTitle>
+            <DialogTitle>Delete "{showDeleteConfirm?.title}"?</DialogTitle>
           </DialogHeader>
-          <p className="text-sm text-gray-600">This action cannot be undone.</p>
+          <p className="text-sm text-muted-foreground">This action cannot be undone.</p>
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="secondary" onClick={() => setShowDeleteConfirm(null)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => deleteEntry(showDeleteConfirm!)}>Delete</Button>
+            <Button variant="destructive" onClick={() => deleteEntry(showDeleteConfirm!.id)}>Delete</Button>
           </div>
         </DialogContent>
       </Dialog>
@@ -265,4 +290,8 @@ function App() {
   );
 }
 
-createRoot(document.getElementById('root')!).render(<App />)
+createRoot(document.getElementById('root')!).render(
+  <ToastProvider>
+    <App />
+  </ToastProvider>
+)
