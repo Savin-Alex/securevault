@@ -1,0 +1,12 @@
+[package]
+name = "vault-store"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+core-crypto = { path = "../core-crypto" }
+zeroize = "1"
+postcard = { version = "1", features = ["use-std"] }
+uuid = { version = "1", features = ["serde", "v4"] }
+getrandom = "0.2"
