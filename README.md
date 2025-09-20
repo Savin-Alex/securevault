@@ -10,6 +10,9 @@ A secure, cross-platform password manager built with Rust and Tauri.
 - 📋 **Smart Clipboard**: Auto-clears copied passwords after 30 seconds
 - 🎲 **Password Generator**: Multiple presets (Safe, Balanced, Fast, Pronounceable)
 - ✏️ **Full CRUD**: Create, read, update, and delete password entries
+- 🔍 **Real-time Search**: Search through password entries instantly
+- 🎨 **Modern UI**: Beautiful interface with shadcn/ui components and Tailwind CSS
+- 🔔 **Toast Notifications**: Elegant success/error messages
 - 🏗️ **Modern Architecture**: Rust backend with React frontend
 
 ## Architecture
@@ -88,6 +91,7 @@ cargo build --release
    - Choose from presets: Safe (20 chars), Balanced (16 chars), Fast (12 chars), or Pronounceable
 
 3. **Manage entries**:
+   - Search entries using the search bar in the top right
    - Edit existing entries
    - Copy passwords to clipboard (auto-clears in 30 seconds)
    - Delete entries when no longer needed
